@@ -1,0 +1,55 @@
+#include "Macros.h"
+#include "Instance.h"
+#include "Common.h"
+#include "PreHash.h"
+
+D_SEC(B)
+BOOL PatchMemoryProtection(
+	_In_	PVOID					pMemPeAddr, 
+	_In_	PIMAGE_NT_HEADERS		pNtHeader,
+    _In_    PINSTANCE               Inst
+    )
+{
+
+	PIMAGE_SECTION_HEADER pSecHeader = IMAGE_FIRST_SECTION(pNtHeader);
+    NTSTATUS    status = 0;
+
+	for (DWORD i = 0; i < pNtHeader->FileHeader.NumberOfSections; i++)
+	{
+		PVOID       pSectionAddr = (PVOID)(U_PTR(pMemPeAddr) + pSecHeader[i].VirtualAddress);
+		SIZE_T	    sectionSize		= pSecHeader[i].SizeOfRawData;
+		DWORD	    dwMemProtect	= 0;
+		ULONG_PTR	oldProtect	= 0;
+
+		if (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE)
+			dwMemProtect = PAGE_WRITECOPY;
+
+		if (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_READ)
+			dwMemProtect = PAGE_READONLY;
+
+		if ((pSecHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE) && (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_READ))
+			dwMemProtect = PAGE_READWRITE;
+
+		if (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE)
+			dwMemProtect = PAGE_EXECUTE;
+
+		if ((pSecHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE))
+			dwMemProtect = PAGE_EXECUTE_WRITECOPY;
+
+		if ((pSecHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_READ))
+			dwMemProtect = PAGE_EXECUTE_READ;
+
+		if ((pSecHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE) && (pSecHeader[i].Characteristics & IMAGE_SCN_MEM_READ))
+			dwMemProtect = PAGE_EXECUTE_READWRITE;
+
+        status = SPOOF_SYSCALL(NtProtectVirtualMemory, 
+			NtCurrentProcess, &pSectionAddr, &sectionSize, dwMemProtect, &oldProtect);
+
+        if (!NT_SUCCESS(status))
+        {
+            return FALSE;
+        }
+
+    }
+	return TRUE;	
+}
